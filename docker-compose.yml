@@ -23,7 +23,7 @@ services:
     working_dir: /app  
     command: >
       sh -c "export PYTHONPATH=$$PYTHONPATH:/app/async_fastapi_image && \
-              celery -A app.src.app:celery worker --loglevel=info"
+              celery -A app.src.worker:celery_app worker --loglevel=info"
     environment:
       - REDIS_URL=redis://redis:6379/0
       - PYTHONPATH=/app/async_fastapi_image

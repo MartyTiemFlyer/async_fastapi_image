@@ -1,46 +1,25 @@
 from typing import Annotated
 from fastapi import Depends, FastAPI, HTTPException, Path, Query, UploadFile
 from sqlalchemy.orm import Session
-from celery import Celery
 import uvicorn
-
+from app.src.worker import celery_app
 from .models import File_model, SessionLocal
 
 app = FastAPI()
 
-# Инициализация Celery
-celery = Celery(
-    __name__,
-    broker="redis://redis:6379/0",
-    backend="redis://redis:6379/0"
-)
 
-# Зависимость - подключение
+###################################################
+# Depends 
+###################################################
+
 async def get_db():
+    """Зависимость - подключение к БД mysql"""
     db = SessionLocal()
     try:
         yield db
     finally:
         db.close()
 
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
-
-# Простая тестовая задача
-@celery.task
-def test_task():
-    return "Task completed!"
-
-
-@app.post("/upload-file")
-async def upload_file(file: UploadFile | None = None):
-    if not file:
-        return {"message": "No upload file sent"}
-    else:
-        return {"filename": file.filename}
-
-###################################################
 async def pagination_params(
     skip: int = Query(0, ge=0),
     limit: int = Query(10, ge=1, le=10)
@@ -61,8 +40,21 @@ async def validate_status(s: str) -> bool:
     )
 
 
-
 ###################################################
+# Endpoints 
+###################################################
+@app.get("/")
+def read_root():
+    return {"Hello": "World"}
+
+
+@app.post("/upload-file")
+async def upload_file(file: UploadFile | None = None):
+    if not file:
+        return {"message": "No upload file sent"}
+    else:
+        return {"filename": file.filename}
+
 @app.get("/files")
 async def get_files(
     pagination: dict = Depends(pagination_params),
@@ -115,6 +107,44 @@ async def update_status(
     
     return {"file_id": file_id, "new_status": new_status}
     
+###################################################
+# CELERY 
+###################################################
+@app.post("/test-task/{file_id}")
+async def run_test_task(file_id: int):
+    """ Отправляем тест-задачу в очередь (полный путь - app.src.worker)"""
+    
+    # кладёт задачу в Redis
+    task = celery_app.send_task(
+        'app.src.worker.test_task', args=[file_id]) 
+
+    # мгновенный ответ клиенту
+    return {
+        "message": "Задача отправлена в очередь",
+        "task_id": task.id,
+        "file_id": file_id
+    }
+
+@app.get("/task-status/{task_id}")
+async def get_task_status(task_id: str):
+    """Запрос статуса по задаче из редис """
+    task = celery_app.AsyncResult(task_id)
+    
+    if task.state == 'PENDING':
+        response = {"status": "Ожидает выполнения"}
+    elif task.state != 'FAILURE':
+        response = {
+            "status": task.state,
+            "result": task.result
+        }
+    else:
+        # Ошибка
+        response = {
+            "status": "Ошибка",
+            "error": str(task.info)  # Сообщение об ошибке
+        }
+    
+    return response
 
 
 
