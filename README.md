@@ -10,12 +10,6 @@
 - **Docker** - контейнеризация
 - **Alembic** - миграции БД
 
-## 📦 Структура проекта
-app/src/
-├── app.py # Основное приложение FastAPI
-├── models.py # Модели SQLAlchemy
-└── celery.py # Конфигурация Celery
-
 
 ## 🛠 API Endpoints
 
