@@ -1,5 +1,5 @@
 from typing import Annotated
-from fastapi import Depends, FastAPI, Query, UploadFile
+from fastapi import Depends, FastAPI, HTTPException, Path, Query, UploadFile
 from sqlalchemy.orm import Session
 from celery import Celery
 import uvicorn
@@ -49,12 +49,20 @@ async def pagination_params(
     
     return {"skip": skip, "limit": limit}
 
-async def validate_status():
+async def validate_status(s: str) -> bool:
     """Зависимость - для проверки статусов"""
-    
-    return {}
+    if s.lower() in ('true', '1', 'yes', 'on'):
+        return True
+    if s.lower() in ('false', '0', 'no', 'off'):
+        return False
+    raise HTTPException(
+        status_code=400,
+        detail=f"Не удаётся преобразовать '{s}' в булево значение"
+    )
 
 
+
+###################################################
 @app.get("/files")
 async def get_files(
     pagination: dict = Depends(pagination_params),
@@ -89,6 +97,24 @@ async def create_file(
     
     return new_file
 
+@app.patch("/files/{file_id}/status")
+async def update_status(
+    file_id: int = Path(..., ge=1),
+    new_status: str = Depends(validate_status), 
+    db: Session = Depends(get_db)
+):
+    # 1. Найти файл в БД
+    file = db.query(File_model).filter(File_model.file_id == file_id).first()
+    
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+    
+    # 2. Обновить статус
+    file.is_processed = new_status  # используем существующее поле
+    db.commit()
+    
+    return {"file_id": file_id, "new_status": new_status}
+    
 
 
 
