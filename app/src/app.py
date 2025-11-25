@@ -1,9 +1,13 @@
+import json
+import os
+import time
 from typing import Annotated
-from fastapi import Depends, FastAPI, HTTPException, Path, Query, UploadFile
+from fastapi import Depends, FastAPI, Form, HTTPException, Path, Query, UploadFile
 from sqlalchemy.orm import Session
 import uvicorn
-from app.src.worker import celery_app
 from .models import File_model, SessionLocal
+from app.src.worker import celery_app, process_image_task
+
 
 app = FastAPI()
 
@@ -145,6 +149,50 @@ async def get_task_status(task_id: str):
         }
     
     return response
+
+
+@app.post("/upload-and-process/")
+async def upload_and_process(
+    file: UploadFile,
+    db: Session = Depends(get_db)
+):
+    """Загружает файл, сохраняет в БД и запускает обработку в Celery"""
+    
+    # Сохраняем файл на диск
+    UPLOAD_DIR = "/app/uploads"  # абсолютный путь
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    file_path = os.path.join(UPLOAD_DIR, file.filename)
+    
+    with open(file_path, "wb") as buffer:
+        content = await file.read()
+        buffer.write(content)
+    
+    # Создаем запись в БД 
+    new_file = File_model(
+        file_name=file.filename,
+        file_size=len(content),
+        mime_type=file.content_type,
+        file_path=file_path
+        # is_processed автоматически False
+    )
+    db.add(new_file)
+    db.commit()
+    db.refresh(new_file)
+    
+    # Запускаем фоновую задачу process_image_task
+    task = process_image_task.delay(new_file.file_id, file_path)  # Используем file_id из БД
+    
+    
+    return {
+        "message": "Изображение загружено и отправлено на обработку",
+        "task_id": task.id,
+        "file_id": new_file.file_id,
+        "file_name": file.filename,
+        "is_processed": False  # Показываем текущий статус
+    }
+
+
+
 
 
 
