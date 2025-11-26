@@ -1,7 +1,8 @@
+from datetime import datetime, timezone
 import time
 from celery import Celery
 from PIL import Image, ImageFilter, ImageEnhance
-import io
+import re
 import os
 
 
@@ -31,8 +32,7 @@ def test_task(file_id: int):
     return f"First Task completed! file: {file_id}"
 
 
-
-@celery_app.task(time_limit=60)
+@celery_app.task(time_limit=40)
 def process_image_task(file_id: int, original_path: str):
     """
     Обрабатывает изображение и обновляет is_processed в БД
@@ -68,3 +68,45 @@ def process_image_task(file_id: int, original_path: str):
             "is_processed": False,
             "error": str(e)
         }
+
+
+@celery_app.task(bind=True, time_limit=30)
+def analyze_text_task(self, text: str, analysis_type: str):
+    """
+    Анализирует текст и возвращает статистику
+    """
+
+    try:
+        # твоя логика
+        if not text.strip():
+            raise ValueError("Empty text provided")
+        
+    except Exception as e:
+        return {
+            "task_id": self.request.id,
+            "status": "error",
+            "error": str(e),
+            "timestamp": datetime.now(timezone.utc).isoformat() }
+    if analysis_type != "full":
+        return {
+            "status": "error",
+            "message": "write 'full' in 'analysis_type' "}
+    else:
+        word_count = len(re.findall(r'\b\w+\b', text)) 
+        char_count = len(text)
+        time.sleep(3)
+        
+        return {
+            "task_id": self.request.id,
+            "status": "success", 
+            "analysis_type": analysis_type,
+            "results": {
+                "word_count": word_count,
+                "char_count": char_count,
+                "avg_word_length": round(char_count / word_count, 2) if word_count > 0 else 0
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    
+
+

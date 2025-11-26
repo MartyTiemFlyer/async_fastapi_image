@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, Form, HTTPException, Path, Query, UploadFi
 from sqlalchemy.orm import Session
 import uvicorn
 from .models import File_model, SessionLocal
-from app.src.worker import celery_app, process_image_task
+from app.src.worker import analyze_text_task, celery_app, process_image_task
 
 
 app = FastAPI()
@@ -191,6 +191,20 @@ async def upload_and_process(
         "is_processed": False  # Показываем текущий статус
     }
 
+
+@app.post("/text-analyze")
+async def analyze_text( text: str, analysis_type: str):
+    """
+    Ручка: анализ текста в фоне
+    """
+
+    task = analyze_text_task.delay(text, analysis_type)
+
+
+    return {
+        "task_id": task.id,
+        "message": "Сообщение отправлено на обработку"
+    }
 
 
 
