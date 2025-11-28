@@ -77,7 +77,6 @@ def analyze_text_task(self, text: str, analysis_type: str):
     """
 
     try:
-        # твоя логика
         if not text.strip():
             raise ValueError("Empty text provided")
         
